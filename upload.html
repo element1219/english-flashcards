@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>英语背单词 · 上传</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+         max-width: 640px; margin: 0 auto; padding: 20px; line-height: 1.6; }
+  h1 { font-size: 22px; }
+  textarea { width: 100%; height: 200px; font-size: 16px; box-sizing: border-box;
+             padding: 10px; font-family: Consolas, Menlo, monospace; }
+  button { font-size: 16px; padding: 10px 18px; margin: 6px 6px 0 0; cursor: pointer; }
+  #log { margin-top: 16px; background: #f4f4f4; border-radius: 8px; padding: 12px;
+         font-family: Consolas, Menlo, monospace; font-size: 13px; white-space: pre-wrap; }
+  .hint { color: #888; font-size: 13px; }
+</style>
+</head>
+<body>
+<h1>英语背单词 · 内容上传</h1>
+<p>每行一个单词 / 短语 / 句子，例如：</p>
+<textarea id="words" placeholder="apple&#10;banana&#10;good morning&#10;I am a student."></textarea>
+<p class="hint">提示：旧词保持原顺序不动、新词追加到末尾，孩子的复习进度才不会丢。</p>
+<div>
+  <button id="btnPush" onclick="doPush()">连接并推送（蓝牙）</button>
+  <button onclick="downloadApp()">下载 app.py（备用）</button>
+  <button onclick="clearLog()">清空日志</button>
+</div>
+<div id="log"></div>
+
+<script>
+const SERVICE_UUID = '7a5c0001-0000-4000-8000-70617373706f';
+const CMD_UUID     = '7a5c0002-0000-4000-8000-70617373706f';
+const RSP_UUID     = '7a5c0003-0000-4000-8000-70617373706f';
+const APP_NAME = 'english';
+const APP_TITLE = 'English';
+const CHUNK = 160;
+
+const TEMPLATE = "\"\"\"English flashcards (offline, English-only).\n\n\u80cc\u5355\u8bcd\u95ea\u5361 \u2014\u2014 \u65b9\u68481\uff1a\u53ea\u663e\u793a\u82f1\u6587\uff0c\u5b69\u5b50\u770b\u7740\u80cc + \u81ea\u8bc4\u3002\n\n\u6309\u952e\uff1a\n  UP   = \u8bb0\u5f97\uff08\u4f1a\u80cc\u4e86\uff09\u2192 \u5347\u4e00\u7ea7\uff0c\u4e0b\u4e00\u5f20\n  DOWN = \u5fd8\u4e86          \u2192 \u964d\u56de 0 \u7ea7\uff0c\u7a0d\u540e\u672c session \u518d\u8003\u4e00\u6b21\n  OK   = \u8df3\u8fc7          \u2192 \u4fdd\u6301\u7b49\u7ea7\uff0c\u7a0d\u540e\u518d\u770b\n  \u957f\u6309 OK = \u9000\u51fa\uff08\u7cfb\u7edf\u884c\u4e3a\uff09\n\n\u95f4\u9694\u590d\u4e60\uff08Leitner \u76d2\u5b50\uff0c5 \u7ea7\uff0c\u95f4\u9694 [0,1,2,4,7] \u5929\uff09\uff1a\n  box 0 = \u5f53\u5929\u5fc5\u8003\uff08\u65b0\u8bcd / \u521a\u5fd8\u7684\uff09\n  box 1 = 1\u5929\u540e  box 2 = 2\u5929\u540e  box 3 = 4\u5929\u540e  box 4 = 7\u5929\u540e\n\u8fdb\u5ea6\u5b58 kv\uff08boxes \u6bcf\u9879\u7b49\u7ea7\u3001last \u6bcf\u9879\u4e0a\u6b21\u590d\u4e60\u65e5\u671f\uff09\u3002\n\nITEMS \u7531\u300c\u4e0a\u4f20\u7f51\u9875\u300d\u751f\u6210\uff1a\u6bcf\u884c\u4e00\u4e2a\u5355\u8bcd/\u77ed\u8bed/\u53e5\u5b50\u3002\n\"\"\"\n\nimport time\n\nTITLE = \"English\"\n\n# ---- \u8bcd\u8868\uff08\u7531\u7f51\u9875\u751f\u6210\uff0c\u8fd9\u91cc\u5148\u653e\u793a\u4f8b\uff0c\u6b63\u5f0f\u4f7f\u7528\u65f6\u4f1a\u88ab\u66ff\u6362\uff09 ----\nITEMS = __ITEMS__\n\nBOX_INTERVALS = [0, 1, 2, 4, 7]\nMAX_BOX = len(BOX_INTERVALS) - 1\n\nBG = 0x0000\nACCENT = 0x07FF\nFG = 0xFFFF\nDIM = 0x8410\nGOOD = 0x07E0\nBAD = 0xF800\nBAR = 0x18E3\nSEP = 0x39E7\n\n\ndef _type_of(s):\n    s = s.strip()\n    if any(ch in s for ch in \".!?\"):\n        return \"SENTENCE\"\n    if \" \" in s:\n        return \"PHRASE\"\n    return \"WORD\"\n\n\ndef _day_num():\n    \"\"\"\u8fd4\u56de\u5355\u8c03\u9012\u589e\u7684\u300c\u65e5\u671f\u53f7\u300d\uff1b\u65f6\u949f\u6ca1\u5bf9\u8fc7\uff08\u5e74\u4efd < 2020\uff09\u65f6\u8fd4\u56de None\u3002\"\"\"\n    t = time.localtime()\n    if t[0] < 2020:\n        return None\n    return t[0] * 372 + t[1] * 31 + t[2]\n\n\ndef _wrap(text, max_chars):\n    \"\"\"\u6309\u7a7a\u683c\u6298\u884c\uff0c\u8d85\u957f\u5355\u8bcd\u786c\u5207\u3002\u8fd4\u56de\u884c\u5217\u8868\u3002\"\"\"\n    words = text.split(\" \")\n    lines = []\n    cur = \"\"\n    for w in words:\n        while len(w) > max_chars:\n            if cur:\n                lines.append(cur)\n                cur = \"\"\n            lines.append(w[:max_chars])\n            w = w[max_chars:]\n        trial = (cur + \" \" + w).strip() if cur else w\n        if len(trial) <= max_chars:\n            cur = trial\n        else:\n            if cur:\n                lines.append(cur)\n            cur = w\n    if cur:\n        lines.append(cur)\n    return lines if lines else [text]\n\n\ndef _load_state(ctx):\n    \"\"\"\u8bfb\u8fdb\u5ea6\uff1b\u8bcd\u8868\u52a0\u957f\u5c31\u8865 0\u3001\u7f29\u77ed\u5c31\u622a\u65ad\uff0c\u65e7\u8bcd\u8fdb\u5ea6\u59cb\u7ec8\u4fdd\u7559\u3002\"\"\"\n    n = len(ITEMS)\n    boxes = ctx.kv_get(\"boxes\", None)\n    last = ctx.kv_get(\"last\", None)\n    if not isinstance(boxes, list):\n        boxes = []\n    if not isinstance(last, list):\n        last = []\n    ctx.boxes = (boxes + [0] * n)[:n]\n    ctx.last = (last + [0] * n)[:n]\n\n\ndef _save_state(ctx):\n    ctx.kv_set(\"boxes\", ctx.boxes)\n    ctx.kv_set(\"last\", ctx.last)\n    ctx.kv_flush()\n\n\ndef _build_queue(ctx):\n    \"\"\"\u8fd4\u56de\u672c\u6b21\u8be5\u590d\u4e60\u7684\u6761\u76ee\u5e8f\u53f7\uff08\u5f31\u9879\u4f18\u5148\uff09\u3002\"\"\"\n    today = _day_num()\n    q = []\n    for i in range(len(ITEMS)):\n        box = ctx.boxes[i]\n        if today is None:\n            q.append(i)                      # \u6ca1\u65f6\u949f\uff1a\u5168\u91cf\u590d\u4e60\n        else:\n            last = ctx.last[i]\n            if last == 0 or (today - last) >= BOX_INTERVALS[box]:\n                q.append(i)\n    q.sort(key=lambda i: ctx.boxes[i])\n    return q\n\n\ndef _draw_card(ctx):\n    lcd = ctx.lcd\n    lcd.fill(BG)\n    lcd.fill_rect(0, 0, ctx.w, 21, BAR)\n    lcd.text2x(\"ENGLISH\", 6, 3, ACCENT, BAR)\n    bat = ctx.battery.label()\n    lcd.text(bat, ctx.w - 8 * len(bat) - 4, 7, DIM, BAR)\n    lcd.fill_rect(0, 21, ctx.w, 1, SEP)\n\n    i = ctx.queue[0]\n    item = ITEMS[i]\n    typ = _type_of(item)\n    lcd.text(\"%s  Lv%d\" % (typ, ctx.boxes[i]), 8, 28, ACCENT, BG)\n\n    done = ctx.done_count + 1\n    prog = \"%d/%d\" % (done, ctx.session_total)\n    lcd.text(prog, ctx.w - 8 * len(prog) - 8, 28, DIM, BG)\n\n    _draw_item(ctx, item)\n\n    lcd.fill_rect(0, ctx.h - 23, ctx.w, 1, SEP)\n    lcd.fill_rect(0, ctx.h - 22, ctx.w, 22, BAR)\n    lcd.text(\"UP good\", 6, ctx.h - 16, GOOD, BAR)\n    lcd.text(\"DN again\", 70, ctx.h - 16, BAD, BAR)\n    lcd.text(\"OK skip\", ctx.w - 7 * 8 - 6, ctx.h - 16, DIM, BAR)\n\n\ndef _draw_item(ctx, item):\n    lcd = ctx.lcd\n    n = len(item)\n    if n <= 7:\n        scale, max_chars = 4, 7\n    elif n <= 14:\n        scale, max_chars = 3, 10\n    elif n <= 30:\n        scale, max_chars = 2, 15\n    else:\n        scale, max_chars = 1, 30\n    lines = _wrap(item, max_chars)\n    line_h = 8 * scale\n    total_h = line_h * len(lines)\n    y = 62 + (150 - total_h) // 2\n    if y < 62:\n        y = 62\n    for ln in lines:\n        lcd.text_center(ln, y, FG, BG, scale)\n        y += line_h\n\n\ndef _beep(ctx, freq, ms=60):\n    a = ctx.audio\n    if a is None or not a.ok:\n        return\n    try:\n        if freq:\n            a.tone(freq, ms)\n    except Exception:\n        pass\n\n\ndef _grade(ctx, good):\n    i = ctx.queue[0]\n    today = _day_num()\n    if good:\n        ctx.boxes[i] = min(ctx.boxes[i] + 1, MAX_BOX)\n        ctx.last[i] = today if today is not None else 0\n        _beep(ctx, 1250, 70)\n        ctx.queue.pop(0)\n        ctx.done_count += 1\n    else:\n        ctx.boxes[i] = 0\n        ctx.last[i] = today if today is not None else 0\n        _beep(ctx, 380, 70)\n        ctx.queue.append(ctx.queue.pop(0))   # \u79fb\u5230\u961f\u5c3e\uff0c\u7a0d\u540e\u518d\u8003\n    _save_state(ctx)\n    if ctx.queue:\n        _draw_card(ctx)\n    else:\n        _draw_done(ctx)\n\n\ndef _skip(ctx):\n    ctx.queue.append(ctx.queue.pop(0))\n    _beep(ctx, 0, 0)\n    if ctx.queue:\n        _draw_card(ctx)\n    else:\n        _draw_done(ctx)\n\n\ndef _draw_done(ctx):\n    lcd = ctx.lcd\n    lcd.fill(BG)\n    lcd.text_center(\"DONE!\", 120, GOOD, BG, 3)\n    lcd.text_center(\"%d cards\" % ctx.session_total, 170, FG, BG, 2)\n    lcd.text_center(\"OK: again\", 230, DIM, BG, 1)\n\n\ndef _draw_clear(ctx):\n    lcd = ctx.lcd\n    lcd.fill(BG)\n    lcd.text_center(\"ALL CLEAR\", 110, GOOD, BG, 3)\n    lcd.text_center(\"no review due\", 160, DIM, BG, 1)\n    lcd.text_center(\"OK: practice\", 220, FG, BG, 1)\n\n\ndef _begin(ctx, force_all):\n    ctx.queue = list(range(len(ITEMS))) if force_all else _build_queue(ctx)\n    ctx.session_total = len(ctx.queue)\n    ctx.done_count = 0\n    if ctx.queue:\n        ctx.state = \"card\"\n        _draw_card(ctx)\n    else:\n        ctx.state = \"clear\"\n        _draw_clear(ctx)\n\n\ndef setup(ctx):\n    _load_state(ctx)\n    if ctx.audio and ctx.audio.ok:\n        try:\n            ctx.audio.set_volume(75)\n        except Exception:\n            pass\n    _begin(ctx, False)\n\n\ndef on_key(ctx, key):\n    if ctx.state == \"card\":\n        if key == \"up\":\n            _grade(ctx, True)\n        elif key == \"down\":\n            _grade(ctx, False)\n        elif key == \"ok\":\n            _skip(ctx)\n    else:\n        if key == \"ok\":\n            _begin(ctx, True)\n        elif key in (\"up\", \"down\"):\n            _begin(ctx, False)\n\n\ndef loop(ctx):\n    pass\n\n\ndef teardown(ctx):\n    _save_state(ctx)\n";
+
+function log(msg) {
+  const el = document.getElementById('log');
+  el.textContent += msg + '\n';
+  el.scrollTop = el.scrollHeight;
+}
+function clearLog() { document.getElementById('log').textContent = ''; }
+
+function buildAppSrc() {
+  const words = document.getElementById('words').value
+    .split(/\r?\n/)
+    .map(s => s.trim())
+    .filter(s => s.length > 0);
+  if (words.length === 0) { throw new Error('请先输入至少一个单词'); }
+  const itemsStr = JSON.stringify(words);   // JSON 数组同时也是合法 Python 列表
+  if (!TEMPLATE.includes('__ITEMS__')) { throw new Error('模板缺少占位符'); }
+  const src = TEMPLATE.replace('__ITEMS__', itemsStr);
+  return { src, count: words.length };
+}
+
+function downloadApp() {
+  try {
+    const { src } = buildAppSrc();
+    const blob = new Blob([src], { type: 'text/x-python' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'app.py';
+    a.click();
+    URL.revokeObjectURL(a.href);
+    log('已生成 app.py 下载');
+  } catch (e) { log('错误：' + e.message); }
+}
+
+// ---- Web Bluetooth 推送 ----
+async function doPush() {
+  clearLog();
+  try {
+    if (!navigator.bluetooth) {
+      throw new Error('此浏览器不支持 Web Bluetooth，请用 Chrome / Edge（手机或电脑均可）');
+    }
+    const { src, count } = buildAppSrc();
+    const bytes = new TextEncoder().encode(src);
+    log('词数：' + count + '，app.py 大小：' + bytes.length + ' 字节');
+
+    log('正在扫描设备…（设备需开机、靠近、且不在别的页面占用蓝牙）');
+    const device = await navigator.bluetooth.requestDevice({
+      filters: [{ services: [SERVICE_UUID] }],
+      optionalServices: [SERVICE_UUID]
+    });
+    log('已选择设备：' + (device.name || '(未命名)'));
+    const server = await device.gatt.connect();
+    log('蓝牙已连接');
+    const svc = await server.getPrimaryService(SERVICE_UUID);
+    const cmd = await svc.getCharacteristic(CMD_UUID);
+    const rsp = await svc.getCharacteristic(RSP_UUID);
+
+    // 响应解析：单包 { … } / 分片 ~ … / 末片 ! …
+    const waiters = [];
+    let acc = '';
+    let frame = '';
+    rsp.addEventListener('characteristicvaluechanged', (e) => {
+      frame += new TextDecoder().decode(e.target.value);
+      while (frame.length > 0) {
+        const c = frame[0];
+        if (c === '~') { acc += frame.slice(1); frame = ''; }
+        else if (c === '!') { acc += frame.slice(1); dispatch(acc); acc = ''; frame = ''; }
+        else if (c === '{') {
+          // 找到闭合 }（简单匹配，响应都是平坦 JSON）
+          const idx = frame.indexOf('}');
+          if (idx < 0) return;
+          dispatch(frame.slice(0, idx + 1));
+          frame = frame.slice(idx + 1);
+        } else { frame = frame.slice(1); }
+      }
+    });
+    function dispatch(text) {
+      let obj = null;
+      try { obj = JSON.parse(text); } catch (e) { return; }
+      for (let i = 0; i < waiters.length; i++) {
+        if (waiters[i].pred(obj)) {
+          waiters[i].resolve(obj);
+          waiters.splice(i, 1);
+          return;
+        }
+      }
+    }
+    function waitFor(pred, timeout = 30000) {
+      return new Promise((resolve, reject) => {
+        const w = { pred, resolve };
+        waiters.push(w);
+        setTimeout(() => {
+          const i = waiters.indexOf(w);
+          if (i >= 0) { waiters.splice(i, 1); reject(new Error('等待设备响应超时')); }
+        }, timeout);
+      });
+    }
+    function sendJson(obj) {
+      const data = new TextEncoder().encode(JSON.stringify(obj));
+      return cmd.writeValue(data);
+    }
+    await rsp.startNotifications();
+
+    // 握手
+    log('握手…');
+    const hello = waitFor(o => o.t === 'hi');
+    await sendJson({ t: 'hello' });
+    const hi = await hello;
+    log('设备就绪（OS=' + (hi.os || '?') + '，已装 ' + ((hi.apps && hi.apps.length) || 0) + ' 个小程序）');
+
+    // 开始上传
+    log('开始上传 app.py…');
+    const putAck = waitFor(o => o.t === 'put');
+    await sendJson({ t: 'put', n: APP_NAME, s: bytes.length, title: APP_TITLE });
+    await putAck;
+
+    // 数据模式：分片发送，每片等 ack
+    for (let off = 0; off < bytes.length; off += CHUNK) {
+      const chunk = bytes.slice(off, off + CHUNK);
+      const ack = waitFor(o => o.t === 'ack');
+      await cmd.writeValue(chunk);
+      await ack;
+      if ((off / CHUNK) % 20 === 0) {
+        log('进度：' + Math.min(off + CHUNK, bytes.length) + '/' + bytes.length);
+      }
+    }
+
+    const done = waitFor(o => o.t === 'done', 60000);
+    await done;
+    log('✅ 上传完成！设备端已更新「English」词表（' + count + ' 个词）。');
+
+    // 收尾：主动 bye，让设备恢复广播
+    await sendJson({ t: 'bye' });
+    await server.disconnect();
+    log('已断开。孩子可在设备菜单里打开 English 开始背单词。');
+  } catch (e) {
+    log('❌ ' + e.message);
+  }
+}
+</script>
+</body>
+</html>
