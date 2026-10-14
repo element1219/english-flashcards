@@ -204,29 +204,55 @@ async function doPush() {
     }
     await rsp.startNotifications();
 
+    // 等 MTU 协商稳定（Android 上 Web Bluetooth 可能不主动协商 MTU）
+    await new Promise(r => setTimeout(r, 400));
+
     log('握手…');
-    const hello = waitFor(o => o.t === 'hi');
+    const hello = waitFor(o => o.t === 'hi' || o.t === 'err');
     await sendJson({ t: 'hello' });
     const hi = await hello;
-    log('设备就绪（OS=' + (hi.os || '?') + '）');
+    if (hi.t === 'err') throw new Error('握手失败: ' + hi.m);
+    log('设备就绪（OS=' + (hi.os || '?') + '，MTU=' + (hi.mtu || '?') + '）');
 
     log('开始上传 app.py…');
-    const putAck = waitFor(o => o.t === 'put');
+    const putAck = waitFor(o => o.t === 'put' || o.t === 'err');
     await sendJson({ t: 'put', n: APP_NAME, s: bytes.length, title: APP_TITLE });
-    await putAck;
+    const pr = await putAck;
+    if (pr.t === 'err') throw new Error('设备拒绝: ' + pr.m);
 
-    for (let off = 0; off < bytes.length; off += CHUNK) {
-      const chunk = bytes.slice(off, off + CHUNK);
-      const ack = waitFor(o => o.t === 'ack');
-      await cmd.writeValue(chunk);
-      await ack;
-      if ((off / CHUNK) % 20 === 0) {
-        log('进度：' + Math.min(off + CHUNK, bytes.length) + '/' + bytes.length);
+    // 分片大小按 MTU 自适应；写失败就减半重试
+    let chunk = (hi.mtu && hi.mtu > 23) ? Math.min(240, hi.mtu - 3) : 160;
+    let off = 0;
+    let finished = false;
+    while (off < bytes.length) {
+      let slice = bytes.slice(off, off + chunk);
+      let wrote = false;
+      for (let attempt = 0; attempt < 5 && !wrote; attempt++) {
+        try {
+          await cmd.writeValue(slice);
+          wrote = true;
+        } catch (e) {
+          if (slice.length <= 20) throw new Error('BLE 写入失败: ' + e.message);
+          chunk = Math.max(20, Math.floor(slice.length / 2));
+          log('写入被拒，分片降到 ' + chunk + ' 字节重试');
+          slice = bytes.slice(off, off + chunk);
+        }
       }
+      if (!wrote) throw new Error('BLE 写入连续失败');
+      const a = await waitFor(o => o.t === 'ack' || o.t === 'done' || o.t === 'err');
+      if (a.t === 'err') throw new Error(a.m);
+      const got = (typeof a.g === 'number') ? a.g : off + slice.length;
+      off = got;
+      if (a.t === 'done') { finished = true; break; }
+      if (off % 1024 < chunk) log('进度：' + off + '/' + bytes.length);
     }
 
-    const done = waitFor(o => o.t === 'done', 60000);
-    await done;
+    if (!finished) {
+      const done = waitFor(o => o.t === 'done' || o.t === 'err', 60000);
+      await sendJson({ t: 'end' });
+      const d = await done;
+      if (d.t === 'err' && String(d.m || '').indexOf('没有正在进行') < 0) throw new Error(d.m);
+    }
     log('✅ 上传完成！设备端「English」已更新（' + count + ' 个词条）。');
 
     await sendJson({ t: 'bye' });
