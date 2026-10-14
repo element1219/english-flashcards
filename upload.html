@@ -9,7 +9,7 @@
   body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
          max-width: 640px; margin: 0 auto; padding: 20px; line-height: 1.6; }
   h1 { font-size: 22px; }
-  textarea { width: 100%; height: 200px; font-size: 16px; box-sizing: border-box;
+  textarea { width: 100%; height: 220px; font-size: 16px; box-sizing: border-box;
              padding: 10px; font-family: Consolas, Menlo, monospace; }
   button { font-size: 16px; padding: 10px 18px; margin: 6px 6px 0 0; cursor: pointer; }
   #log { margin-top: 16px; background: #f4f4f4; border-radius: 8px; padding: 12px;
@@ -19,9 +19,9 @@
 </head>
 <body>
 <h1>英语背单词 · 内容上传</h1>
-<p>每行一个单词 / 短语 / 句子，例如：</p>
-<textarea id="words" placeholder="apple&#10;banana&#10;good morning&#10;I am a student."></textarea>
-<p class="hint">提示：旧词保持原顺序不动、新词追加到末尾，孩子的复习进度才不会丢。</p>
+<p>每行一个「英文=中文」，例如：</p>
+<textarea id="words" placeholder="incredible=不可思议的&#10;intelligent=智慧的&#10;good morning=早上好&#10;I am a student.=我是一名学生。"></textarea>
+<p class="hint">提示：旧词保持原顺序不动、新词追加在末尾，孩子的复习进度才不会丢。</p>
 <div>
   <button id="btnPush" onclick="doPush()">连接并推送（蓝牙）</button>
   <button onclick="downloadApp()">下载 app.py（备用）</button>
@@ -37,7 +37,11 @@ const APP_NAME = 'english';
 const APP_TITLE = 'English';
 const CHUNK = 160;
 
-const TEMPLATE = "\"\"\"English flashcards (offline, English-only).\n\n\u80cc\u5355\u8bcd\u95ea\u5361 \u2014\u2014 \u65b9\u68481\uff1a\u53ea\u663e\u793a\u82f1\u6587\uff0c\u5b69\u5b50\u770b\u7740\u80cc + \u81ea\u8bc4\u3002\n\n\u6309\u952e\uff1a\n  UP   = \u8bb0\u5f97\uff08\u4f1a\u80cc\u4e86\uff09\u2192 \u5347\u4e00\u7ea7\uff0c\u4e0b\u4e00\u5f20\n  DOWN = \u5fd8\u4e86          \u2192 \u964d\u56de 0 \u7ea7\uff0c\u7a0d\u540e\u672c session \u518d\u8003\u4e00\u6b21\n  OK   = \u8df3\u8fc7          \u2192 \u4fdd\u6301\u7b49\u7ea7\uff0c\u7a0d\u540e\u518d\u770b\n  \u957f\u6309 OK = \u9000\u51fa\uff08\u7cfb\u7edf\u884c\u4e3a\uff09\n\n\u95f4\u9694\u590d\u4e60\uff08Leitner \u76d2\u5b50\uff0c5 \u7ea7\uff0c\u95f4\u9694 [0,1,2,4,7] \u5929\uff09\uff1a\n  box 0 = \u5f53\u5929\u5fc5\u8003\uff08\u65b0\u8bcd / \u521a\u5fd8\u7684\uff09\n  box 1 = 1\u5929\u540e  box 2 = 2\u5929\u540e  box 3 = 4\u5929\u540e  box 4 = 7\u5929\u540e\n\u8fdb\u5ea6\u5b58 kv\uff08boxes \u6bcf\u9879\u7b49\u7ea7\u3001last \u6bcf\u9879\u4e0a\u6b21\u590d\u4e60\u65e5\u671f\uff09\u3002\n\nITEMS \u7531\u300c\u4e0a\u4f20\u7f51\u9875\u300d\u751f\u6210\uff1a\u6bcf\u884c\u4e00\u4e2a\u5355\u8bcd/\u77ed\u8bed/\u53e5\u5b50\u3002\n\"\"\"\n\nimport time\n\nTITLE = \"English\"\n\n# ---- \u8bcd\u8868\uff08\u7531\u7f51\u9875\u751f\u6210\uff0c\u8fd9\u91cc\u5148\u653e\u793a\u4f8b\uff0c\u6b63\u5f0f\u4f7f\u7528\u65f6\u4f1a\u88ab\u66ff\u6362\uff09 ----\nITEMS = __ITEMS__\n\nBOX_INTERVALS = [0, 1, 2, 4, 7]\nMAX_BOX = len(BOX_INTERVALS) - 1\n\nBG = 0x0000\nACCENT = 0x07FF\nFG = 0xFFFF\nDIM = 0x8410\nGOOD = 0x07E0\nBAD = 0xF800\nBAR = 0x18E3\nSEP = 0x39E7\n\n\ndef _type_of(s):\n    s = s.strip()\n    if any(ch in s for ch in \".!?\"):\n        return \"SENTENCE\"\n    if \" \" in s:\n        return \"PHRASE\"\n    return \"WORD\"\n\n\ndef _day_num():\n    \"\"\"\u8fd4\u56de\u5355\u8c03\u9012\u589e\u7684\u300c\u65e5\u671f\u53f7\u300d\uff1b\u65f6\u949f\u6ca1\u5bf9\u8fc7\uff08\u5e74\u4efd < 2020\uff09\u65f6\u8fd4\u56de None\u3002\"\"\"\n    t = time.localtime()\n    if t[0] < 2020:\n        return None\n    return t[0] * 372 + t[1] * 31 + t[2]\n\n\ndef _wrap(text, max_chars):\n    \"\"\"\u6309\u7a7a\u683c\u6298\u884c\uff0c\u8d85\u957f\u5355\u8bcd\u786c\u5207\u3002\u8fd4\u56de\u884c\u5217\u8868\u3002\"\"\"\n    words = text.split(\" \")\n    lines = []\n    cur = \"\"\n    for w in words:\n        while len(w) > max_chars:\n            if cur:\n                lines.append(cur)\n                cur = \"\"\n            lines.append(w[:max_chars])\n            w = w[max_chars:]\n        trial = (cur + \" \" + w).strip() if cur else w\n        if len(trial) <= max_chars:\n            cur = trial\n        else:\n            if cur:\n                lines.append(cur)\n            cur = w\n    if cur:\n        lines.append(cur)\n    return lines if lines else [text]\n\n\ndef _load_state(ctx):\n    \"\"\"\u8bfb\u8fdb\u5ea6\uff1b\u8bcd\u8868\u52a0\u957f\u5c31\u8865 0\u3001\u7f29\u77ed\u5c31\u622a\u65ad\uff0c\u65e7\u8bcd\u8fdb\u5ea6\u59cb\u7ec8\u4fdd\u7559\u3002\"\"\"\n    n = len(ITEMS)\n    boxes = ctx.kv_get(\"boxes\", None)\n    last = ctx.kv_get(\"last\", None)\n    if not isinstance(boxes, list):\n        boxes = []\n    if not isinstance(last, list):\n        last = []\n    ctx.boxes = (boxes + [0] * n)[:n]\n    ctx.last = (last + [0] * n)[:n]\n\n\ndef _save_state(ctx):\n    ctx.kv_set(\"boxes\", ctx.boxes)\n    ctx.kv_set(\"last\", ctx.last)\n    ctx.kv_flush()\n\n\ndef _build_queue(ctx):\n    \"\"\"\u8fd4\u56de\u672c\u6b21\u8be5\u590d\u4e60\u7684\u6761\u76ee\u5e8f\u53f7\uff08\u5f31\u9879\u4f18\u5148\uff09\u3002\"\"\"\n    today = _day_num()\n    q = []\n    for i in range(len(ITEMS)):\n        box = ctx.boxes[i]\n        if today is None:\n            q.append(i)                      # \u6ca1\u65f6\u949f\uff1a\u5168\u91cf\u590d\u4e60\n        else:\n            last = ctx.last[i]\n            if last == 0 or (today - last) >= BOX_INTERVALS[box]:\n                q.append(i)\n    q.sort(key=lambda i: ctx.boxes[i])\n    return q\n\n\ndef _draw_card(ctx):\n    lcd = ctx.lcd\n    lcd.fill(BG)\n    lcd.fill_rect(0, 0, ctx.w, 21, BAR)\n    lcd.text2x(\"ENGLISH\", 6, 3, ACCENT, BAR)\n    bat = ctx.battery.label()\n    lcd.text(bat, ctx.w - 8 * len(bat) - 4, 7, DIM, BAR)\n    lcd.fill_rect(0, 21, ctx.w, 1, SEP)\n\n    i = ctx.queue[0]\n    item = ITEMS[i]\n    typ = _type_of(item)\n    lcd.text(\"%s  Lv%d\" % (typ, ctx.boxes[i]), 8, 28, ACCENT, BG)\n\n    done = ctx.done_count + 1\n    prog = \"%d/%d\" % (done, ctx.session_total)\n    lcd.text(prog, ctx.w - 8 * len(prog) - 8, 28, DIM, BG)\n\n    _draw_item(ctx, item)\n\n    lcd.fill_rect(0, ctx.h - 23, ctx.w, 1, SEP)\n    lcd.fill_rect(0, ctx.h - 22, ctx.w, 22, BAR)\n    lcd.text(\"UP good\", 6, ctx.h - 16, GOOD, BAR)\n    lcd.text(\"DN again\", 70, ctx.h - 16, BAD, BAR)\n    lcd.text(\"OK skip\", ctx.w - 7 * 8 - 6, ctx.h - 16, DIM, BAR)\n\n\ndef _draw_item(ctx, item):\n    lcd = ctx.lcd\n    n = len(item)\n    if n <= 7:\n        scale, max_chars = 4, 7\n    elif n <= 14:\n        scale, max_chars = 3, 10\n    elif n <= 30:\n        scale, max_chars = 2, 15\n    else:\n        scale, max_chars = 1, 30\n    lines = _wrap(item, max_chars)\n    line_h = 8 * scale\n    total_h = line_h * len(lines)\n    y = 62 + (150 - total_h) // 2\n    if y < 62:\n        y = 62\n    for ln in lines:\n        lcd.text_center(ln, y, FG, BG, scale)\n        y += line_h\n\n\ndef _beep(ctx, freq, ms=60):\n    a = ctx.audio\n    if a is None or not a.ok:\n        return\n    try:\n        if freq:\n            a.tone(freq, ms)\n    except Exception:\n        pass\n\n\ndef _grade(ctx, good):\n    i = ctx.queue[0]\n    today = _day_num()\n    if good:\n        ctx.boxes[i] = min(ctx.boxes[i] + 1, MAX_BOX)\n        ctx.last[i] = today if today is not None else 0\n        _beep(ctx, 1250, 70)\n        ctx.queue.pop(0)\n        ctx.done_count += 1\n    else:\n        ctx.boxes[i] = 0\n        ctx.last[i] = today if today is not None else 0\n        _beep(ctx, 380, 70)\n        ctx.queue.append(ctx.queue.pop(0))   # \u79fb\u5230\u961f\u5c3e\uff0c\u7a0d\u540e\u518d\u8003\n    _save_state(ctx)\n    if ctx.queue:\n        _draw_card(ctx)\n    else:\n        _draw_done(ctx)\n\n\ndef _skip(ctx):\n    ctx.queue.append(ctx.queue.pop(0))\n    _beep(ctx, 0, 0)\n    if ctx.queue:\n        _draw_card(ctx)\n    else:\n        _draw_done(ctx)\n\n\ndef _draw_done(ctx):\n    lcd = ctx.lcd\n    lcd.fill(BG)\n    lcd.text_center(\"DONE!\", 120, GOOD, BG, 3)\n    lcd.text_center(\"%d cards\" % ctx.session_total, 170, FG, BG, 2)\n    lcd.text_center(\"OK: again\", 230, DIM, BG, 1)\n\n\ndef _draw_clear(ctx):\n    lcd = ctx.lcd\n    lcd.fill(BG)\n    lcd.text_center(\"ALL CLEAR\", 110, GOOD, BG, 3)\n    lcd.text_center(\"no review due\", 160, DIM, BG, 1)\n    lcd.text_center(\"OK: practice\", 220, FG, BG, 1)\n\n\ndef _begin(ctx, force_all):\n    ctx.queue = list(range(len(ITEMS))) if force_all else _build_queue(ctx)\n    ctx.session_total = len(ctx.queue)\n    ctx.done_count = 0\n    if ctx.queue:\n        ctx.state = \"card\"\n        _draw_card(ctx)\n    else:\n        ctx.state = \"clear\"\n        _draw_clear(ctx)\n\n\ndef setup(ctx):\n    _load_state(ctx)\n    if ctx.audio and ctx.audio.ok:\n        try:\n            ctx.audio.set_volume(75)\n        except Exception:\n            pass\n    _begin(ctx, False)\n\n\ndef on_key(ctx, key):\n    if ctx.state == \"card\":\n        if key == \"up\":\n            _grade(ctx, True)\n        elif key == \"down\":\n            _grade(ctx, False)\n        elif key == \"ok\":\n            _skip(ctx)\n    else:\n        if key == \"ok\":\n            _begin(ctx, True)\n        elif key in (\"up\", \"down\"):\n            _begin(ctx, False)\n\n\ndef loop(ctx):\n    pass\n\n\ndef teardown(ctx):\n    _save_state(ctx)\n";
+const UI_FLIP = '翻面看答案';
+const UI_GOOD = '记得';
+const UI_BAD = '忘了';
+
+const TEMPLATE = "\"\"\"English flashcards v2 \u2014 \u53cc\u9762\u5361\uff08\u82f1\u6587 \u2192 \u4e2d\u6587\uff09\u3002\n\n\u5361\u7247\u6d41\u7a0b\uff08\u56de\u5fc6\u95ed\u73af\uff09\uff1a\n  \u6b63\u9762\uff1a\u82f1\u6587\uff08\u5927\u5b57\uff09\u2192 \u5b69\u5b50\u5148\u56de\u5fc6\u4e2d\u6587\u610f\u601d\n  \u6309 OK \u2192 \u7ffb\u9762\uff0c\u663e\u793a\u4e2d\u6587\u91ca\u4e49\n  \u80cc\u9762\uff1aUP = \u8bb0\u5bf9\u4e86\uff08\u5347\u4e00\u7ea7\uff09   DOWN = \u6ca1\u8bb0\u4f4f\uff08\u964d\u56de 0 \u7ea7\uff09   OK = \u7ffb\u56de\u82f1\u6587\u518d\u770b\n  \u957f\u6309 OK = \u9000\u51fa\uff08\u7cfb\u7edf\u884c\u4e3a\uff09\n\n\u95f4\u9694\u590d\u4e60 Leitner [0,1,2,4,7] \u5929\uff0c\u8fdb\u5ea6\u6389\u7535\u4fdd\u5b58\uff08kv\uff09\u3002\nITEMS / FONT / HINT_* \u7531\u751f\u6210\u5668\u586b\u5145\uff08\u4e2d\u6587\u7528 Unicode \u7801\u70b9\u5217\u8868\uff0c\u8bbe\u5907\u7aef\u96f6 UTF-8 \u89e3\u7801\uff09\u3002\n\"\"\"\n\nimport time\n\nTITLE = \"English\"\n\n# \u7531\u751f\u6210\u5668\u586b\u5145\nITEMS = __ITEMS__     # [(english, [codepoints...]), ...]\nFONT = __FONT__       # {codepoint: hexstr}  24x24 mono HLSB\nHINT_FLIP = __HINT_FLIP__\nHINT_GOOD = __HINT_GOOD__\nHINT_BAD = __HINT_BAD__\n\nCHAR_W = 24\nCHAR_H = 24\n\nBOX_INTERVALS = [0, 1, 2, 4, 7]\nMAX_BOX = len(BOX_INTERVALS) - 1\n\n# ---- \u914d\u8272 (RGB565) ----\nBG = 0x0841\nPANEL = 0x1082\nBAR = 0x18E3\nACCENT = 0x07FF\nFG = 0xFFFF\nDIM = 0x8410\nGOOD = 0x07E0\nBAD = 0xF800\nGOLD = 0x0331\nTYPE_C = {\"WORD\": 0x07FF, \"PHRASE\": 0x07E0, \"SENTENCE\": 0xFD20}\n\n\ndef _type_of(s):\n    s = s.strip()\n    if any(ch in s for ch in \".!?\"):\n        return \"SENTENCE\"\n    if \" \" in s:\n        return \"PHRASE\"\n    return \"WORD\"\n\n\ndef _day_num():\n    t = time.localtime()\n    if t[0] < 2020:\n        return None\n    return t[0] * 372 + t[1] * 31 + t[2]\n\n\ndef _wrap(text, max_chars):\n    words = text.split(\" \")\n    lines = []\n    cur = \"\"\n    for w in words:\n        while len(w) > max_chars:\n            if cur:\n                lines.append(cur)\n                cur = \"\"\n            lines.append(w[:max_chars])\n            w = w[max_chars:]\n        trial = (cur + \" \" + w).strip() if cur else w\n        if len(trial) <= max_chars:\n            cur = trial\n        else:\n            if cur:\n                lines.append(cur)\n            cur = w\n    if cur:\n        lines.append(cur)\n    return lines if lines else [text]\n\n\n# ---- \u72b6\u6001 ----\ndef _load_state(ctx):\n    n = len(ITEMS)\n    boxes = ctx.kv_get(\"boxes\", None)\n    last = ctx.kv_get(\"last\", None)\n    if not isinstance(boxes, list):\n        boxes = []\n    if not isinstance(last, list):\n        last = []\n    ctx.boxes = (boxes + [0] * n)[:n]\n    ctx.last = (last + [0] * n)[:n]\n\n\ndef _save_state(ctx):\n    ctx.kv_set(\"boxes\", ctx.boxes)\n    ctx.kv_set(\"last\", ctx.last)\n    ctx.kv_flush()\n\n\ndef _build_queue(ctx):\n    today = _day_num()\n    q = []\n    for i in range(len(ITEMS)):\n        box = ctx.boxes[i]\n        if today is None:\n            q.append(i)\n        else:\n            last = ctx.last[i]\n            if last == 0 or (today - last) >= BOX_INTERVALS[box]:\n                q.append(i)\n    q.sort(key=lambda i: ctx.boxes[i])\n    return q\n\n\n# ---- \u4e2d\u6587\u70b9\u9635\u6e32\u67d3\uff08\u7801\u70b9\u5217\u8868\uff09----\ndef _glyph(cp):\n    h = FONT.get(cp)\n    if h is None:\n        return None\n    try:\n        return bytes.fromhex(h)\n    except Exception:\n        return None\n\n\ndef _cn_width(cplist):\n    return len(cplist) * CHAR_W\n\n\ndef _draw_cn_at(ctx, cplist, x, y, color):\n    lcd = ctx.lcd\n    stride = CHAR_W // 8\n    for cp in cplist:\n        g = _glyph(cp)\n        if g:\n            for row in range(CHAR_H):\n                base = row * stride\n                col = 0\n                while col < CHAR_W:\n                    if g[base + (col // 8)] & (0x80 >> (col % 8)):\n                        run = 1\n                        col += 1\n                        while col < CHAR_W and (g[base + (col // 8)] & (0x80 >> (col % 8))):\n                            run += 1\n                            col += 1\n                        lcd.fill_rect(x + col - run, y + row, run, 1, color)\n                    else:\n                        col += 1\n        x += CHAR_W\n\n\ndef _draw_cn_center(ctx, cplist, y, color):\n    x = (ctx.w - _cn_width(cplist)) // 2\n    if x < 0:\n        x = 0\n    _draw_cn_at(ctx, cplist, x, y, color)\n\n\n# ---- \u7ed8\u5236 ----\ndef _draw_topbar(ctx):\n    lcd = ctx.lcd\n    lcd.fill_rect(0, 0, ctx.w, 22, BAR)\n    lcd.text2x(\"ENGLISH\", 6, 3, ACCENT, BAR)\n    bat = ctx.battery.label()\n    lcd.text(bat, ctx.w - 8 * len(bat) - 4, 7, DIM, BAR)\n    lcd.fill_rect(0, 22, ctx.w, 1, ACCENT)\n\n\ndef _draw_progress(ctx):\n    lcd = ctx.lcd\n    total = ctx.session_total\n    done = ctx.done_count\n    lcd.fill_rect(0, 26, ctx.w, 8, PANEL)\n    if total > 0:\n        pct = (done * 100) // total\n        lcd.progress(0, 26, ctx.w, 8, pct, ACCENT, PANEL)\n    shown = done + 1 if done < total else total\n    lcd.text(\"%d/%d\" % (shown, total), ctx.w - 48, 38, DIM, BG)\n\n\ndef _draw_box_dots(ctx, y):\n    lcd = ctx.lcd\n    i = ctx.queue[0]\n    box = ctx.boxes[i]\n    n = MAX_BOX + 1\n    dw = 12\n    gap = 8\n    total_w = n * dw + (n - 1) * gap\n    x = (ctx.w - total_w) // 2\n    for k in range(n):\n        lcd.fill_rect(x, y, dw, dw, GOLD if k < box else PANEL)\n        x += dw + gap\n\n\ndef _draw_en(ctx, en):\n    lcd = ctx.lcd\n    n = len(en)\n    if n <= 7:\n        scale, max_chars = 4, 7\n    elif n <= 14:\n        scale, max_chars = 3, 10\n    elif n <= 30:\n        scale, max_chars = 2, 15\n    else:\n        scale, max_chars = 1, 30\n    lines = _wrap(en, max_chars)\n    line_h = 8 * scale\n    total_h = line_h * len(lines)\n    y = 92 + (140 - total_h) // 2\n    if y < 92:\n        y = 92\n    for ln in lines:\n        lcd.text_center(ln, y, FG, BG, scale)\n        y += line_h\n\n\ndef _draw_front(ctx):\n    lcd = ctx.lcd\n    lcd.fill(BG)\n    _draw_topbar(ctx)\n    _draw_progress(ctx)\n\n    i = ctx.queue[0]\n    en, cn = ITEMS[i]\n    typ = _type_of(en)\n\n    tc = TYPE_C.get(typ, ACCENT)\n    lcd.fill_rect(8, 46, len(typ) * 8 + 8, 16, tc)\n    lcd.text(typ, 12, 50, BG, tc)\n\n    _draw_en(ctx, en)\n    _draw_box_dots(ctx, 248)\n\n    lcd.fill_rect(0, ctx.h - 24, ctx.w, 24, BAR)\n    lcd.fill_rect(0, ctx.h - 25, ctx.w, 1, ACCENT)\n    lcd.text(\"[OK]\", 6, ctx.h - 18, ACCENT, BAR)\n    _draw_cn_at(ctx, HINT_FLIP, 44, ctx.h - 24, FG)\n\n\ndef _draw_back(ctx):\n    lcd = ctx.lcd\n    lcd.fill(BG)\n    _draw_topbar(ctx)\n    _draw_progress(ctx)\n\n    i = ctx.queue[0]\n    en, cn = ITEMS[i]\n\n    lcd.text_center(\"ANSWER\", 46, DIM, BG, 1)\n    _draw_cn_center(ctx, cn, 118, FG)\n    lcd.text_center(en if len(en) <= 30 else en[:28] + \"..\", 200, DIM, BG, 1)\n\n    lcd.fill_rect(0, ctx.h - 24, ctx.w, 24, BAR)\n    lcd.fill_rect(0, ctx.h - 25, ctx.w, 1, ACCENT)\n    lcd.text(\"[UP]\", 6, ctx.h - 18, GOOD, BAR)\n    _draw_cn_at(ctx, HINT_GOOD, 42, ctx.h - 24, GOOD)\n    lcd.text(\"[DN]\", ctx.w - 78, ctx.h - 18, BAD, BAR)\n    _draw_cn_at(ctx, HINT_BAD, ctx.w - 46, ctx.h - 24, BAD)\n\n\ndef _beep(ctx, freq, ms=60):\n    a = ctx.audio\n    if a is None or not a.ok:\n        return\n    try:\n        if freq:\n            a.tone(freq, ms)\n    except Exception:\n        pass\n\n\ndef _grade(ctx, good):\n    i = ctx.queue[0]\n    today = _day_num()\n    if good:\n        ctx.boxes[i] = min(ctx.boxes[i] + 1, MAX_BOX)\n        ctx.last[i] = today if today is not None else 0\n        _beep(ctx, 1250, 70)\n        ctx.queue.pop(0)\n        ctx.done_count += 1\n    else:\n        ctx.boxes[i] = 0\n        ctx.last[i] = today if today is not None else 0\n        _beep(ctx, 380, 70)\n        ctx.queue.append(ctx.queue.pop(0))\n    _save_state(ctx)\n    if ctx.queue:\n        ctx.state = \"front\"\n        _draw_front(ctx)\n    else:\n        _draw_done(ctx)\n\n\ndef _draw_done(ctx):\n    lcd = ctx.lcd\n    lcd.fill(BG)\n    lcd.text_center(\"DONE!\", 110, GOOD, BG, 3)\n    lcd.text_center(\"%d cards\" % ctx.session_total, 160, FG, BG, 2)\n    lcd.text_center(\"[OK] again\", 220, DIM, BG, 1)\n\n\ndef _draw_clear(ctx):\n    lcd = ctx.lcd\n    lcd.fill(BG)\n    lcd.text_center(\"ALL CLEAR\", 110, GOOD, BG, 3)\n    lcd.text_center(\"no review due\", 160, DIM, BG, 1)\n    lcd.text_center(\"[OK] practice\", 220, FG, BG, 1)\n\n\ndef _begin(ctx, force_all):\n    ctx.queue = list(range(len(ITEMS))) if force_all else _build_queue(ctx)\n    ctx.session_total = len(ctx.queue)\n    ctx.done_count = 0\n    if ctx.queue:\n        ctx.state = \"front\"\n        _draw_front(ctx)\n    else:\n        ctx.state = \"clear\"\n        _draw_clear(ctx)\n\n\ndef setup(ctx):\n    _load_state(ctx)\n    if ctx.audio and ctx.audio.ok:\n        try:\n            ctx.audio.set_volume(75)\n        except Exception:\n            pass\n    _begin(ctx, False)\n\n\ndef on_key(ctx, key):\n    if ctx.state == \"front\":\n        if key == \"ok\":\n            ctx.state = \"back\"\n            _draw_back(ctx)\n    elif ctx.state == \"back\":\n        if key == \"up\":\n            _grade(ctx, True)\n        elif key == \"down\":\n            _grade(ctx, False)\n        elif key == \"ok\":\n            ctx.state = \"front\"\n            _draw_front(ctx)\n    else:\n        if key == \"ok\":\n            _begin(ctx, True)\n        elif key in (\"up\", \"down\"):\n            _begin(ctx, False)\n\n\ndef loop(ctx):\n    pass\n\n\ndef teardown(ctx):\n    _save_state(ctx)\n";
 
 function log(msg) {
   const el = document.getElementById('log');
@@ -46,16 +50,84 @@ function log(msg) {
 }
 function clearLog() { document.getElementById('log').textContent = ''; }
 
+function normEn(s) {
+  return s.replace(/[\u2018\u2019]/g, "'").replace(/[\u201c\u201d]/g, '"').replace(/\u2026/g, '...');
+}
+function codepoints(s) {
+  return Array.from(s).map(ch => ch.codePointAt(0));
+}
+
+function renderGlyph(ch) {
+  const size = 24, big = size * 4;
+  const c = document.createElement('canvas');
+  c.width = big; c.height = big;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#000000';
+  ctx.fillRect(0, 0, big, big);
+  ctx.fillStyle = '#ffffff';
+  ctx.font = Math.floor(big * 0.85) + 'px "Noto Sans CJK SC","PingFang SC","Microsoft YaHei",sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(ch, big / 2, big / 2);
+  const img = ctx.getImageData(0, 0, big, big).data;
+  const stride = size >> 3;
+  const out = new Uint8Array(size * stride);
+  const ratio = big / size;
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      let sum = 0;
+      for (let dy = 0; dy < ratio; dy++) {
+        for (let dx = 0; dx < ratio; dx++) {
+          sum += img[((y * ratio + dy) * big + (x * ratio + dx)) * 4];
+        }
+      }
+      if (sum / (ratio * ratio) > 128) {
+        out[y * stride + (x >> 3)] |= 0x80 >> (x & 7);
+      }
+    }
+  }
+  let hex = '';
+  for (let i = 0; i < out.length; i++) hex += (out[i] < 16 ? '0' : '') + out[i].toString(16);
+  return hex;
+}
+
+function buildFontDict(font) {
+  const parts = [];
+  for (const cp in font) parts.push(cp + ': ' + JSON.stringify(font[cp]));
+  return '{' + parts.join(', ') + '}';
+}
+
 function buildAppSrc() {
-  const words = document.getElementById('words').value
-    .split(/\r?\n/)
-    .map(s => s.trim())
-    .filter(s => s.length > 0);
-  if (words.length === 0) { throw new Error('请先输入至少一个单词'); }
-  const itemsStr = JSON.stringify(words);   // JSON 数组同时也是合法 Python 列表
-  if (!TEMPLATE.includes('__ITEMS__')) { throw new Error('模板缺少占位符'); }
-  const src = TEMPLATE.replace('__ITEMS__', itemsStr);
-  return { src, count: words.length };
+  const lines = document.getElementById('words').value
+    .split(/\r?\n/).map(s => s.trim()).filter(s => s.length > 0);
+  if (lines.length === 0) { throw new Error('请先输入至少一个词条'); }
+
+  const items = [];
+  const cpset = new Set();
+  for (const line of lines) {
+    const idx = line.indexOf('=');
+    let en, cn;
+    if (idx >= 0) { en = line.slice(0, idx).trim(); cn = line.slice(idx + 1).trim(); }
+    else { en = line.trim(); cn = ''; }
+    en = normEn(en);
+    const cps = codepoints(cn);
+    items.push([en, cps]);
+    for (const cp of cps) cpset.add(cp);
+  }
+  for (const s of [UI_FLIP, UI_GOOD, UI_BAD]) {
+    for (const cp of codepoints(s)) cpset.add(cp);
+  }
+
+  const font = {};
+  for (const cp of cpset) font[cp] = renderGlyph(String.fromCodePoint(cp));
+
+  let src = TEMPLATE;
+  src = src.replace('__ITEMS__', JSON.stringify(items));
+  src = src.replace('__FONT__', buildFontDict(font));
+  src = src.replace('__HINT_FLIP__', JSON.stringify(codepoints(UI_FLIP)));
+  src = src.replace('__HINT_GOOD__', JSON.stringify(codepoints(UI_GOOD)));
+  src = src.replace('__HINT_BAD__', JSON.stringify(codepoints(UI_BAD)));
+  return { src, count: items.length, chars: cpset.size };
 }
 
 function downloadApp() {
@@ -71,18 +143,17 @@ function downloadApp() {
   } catch (e) { log('错误：' + e.message); }
 }
 
-// ---- Web Bluetooth 推送 ----
 async function doPush() {
   clearLog();
   try {
     if (!navigator.bluetooth) {
-      throw new Error('此浏览器不支持 Web Bluetooth，请用 Chrome / Edge（手机或电脑均可）');
+      throw new Error('此浏览器不支持 Web Bluetooth，请用 Chrome / Edge（安卓手机用 Chrome）');
     }
-    const { src, count } = buildAppSrc();
+    const { src, count, chars } = buildAppSrc();
     const bytes = new TextEncoder().encode(src);
-    log('词数：' + count + '，app.py 大小：' + bytes.length + ' 字节');
+    log('词条：' + count + ' 个，中文字：' + chars + ' 个，app.py：' + bytes.length + ' 字节');
 
-    log('正在扫描设备…（设备需开机、靠近、且不在别的页面占用蓝牙）');
+    log('正在扫描设备…（设备需开机、靠近、且不被别的页面占用蓝牙）');
     const device = await navigator.bluetooth.requestDevice({
       filters: [{ services: [SERVICE_UUID] }],
       optionalServices: [SERVICE_UUID]
@@ -94,7 +165,6 @@ async function doPush() {
     const cmd = await svc.getCharacteristic(CMD_UUID);
     const rsp = await svc.getCharacteristic(RSP_UUID);
 
-    // 响应解析：单包 { … } / 分片 ~ … / 末片 ! …
     const waiters = [];
     let acc = '';
     let frame = '';
@@ -105,7 +175,6 @@ async function doPush() {
         if (c === '~') { acc += frame.slice(1); frame = ''; }
         else if (c === '!') { acc += frame.slice(1); dispatch(acc); acc = ''; frame = ''; }
         else if (c === '{') {
-          // 找到闭合 }（简单匹配，响应都是平坦 JSON）
           const idx = frame.indexOf('}');
           if (idx < 0) return;
           dispatch(frame.slice(0, idx + 1));
@@ -117,11 +186,7 @@ async function doPush() {
       let obj = null;
       try { obj = JSON.parse(text); } catch (e) { return; }
       for (let i = 0; i < waiters.length; i++) {
-        if (waiters[i].pred(obj)) {
-          waiters[i].resolve(obj);
-          waiters.splice(i, 1);
-          return;
-        }
+        if (waiters[i].pred(obj)) { waiters[i].resolve(obj); waiters.splice(i, 1); return; }
       }
     }
     function waitFor(pred, timeout = 30000) {
@@ -135,25 +200,21 @@ async function doPush() {
       });
     }
     function sendJson(obj) {
-      const data = new TextEncoder().encode(JSON.stringify(obj));
-      return cmd.writeValue(data);
+      return cmd.writeValue(new TextEncoder().encode(JSON.stringify(obj)));
     }
     await rsp.startNotifications();
 
-    // 握手
     log('握手…');
     const hello = waitFor(o => o.t === 'hi');
     await sendJson({ t: 'hello' });
     const hi = await hello;
-    log('设备就绪（OS=' + (hi.os || '?') + '，已装 ' + ((hi.apps && hi.apps.length) || 0) + ' 个小程序）');
+    log('设备就绪（OS=' + (hi.os || '?') + '）');
 
-    // 开始上传
     log('开始上传 app.py…');
     const putAck = waitFor(o => o.t === 'put');
     await sendJson({ t: 'put', n: APP_NAME, s: bytes.length, title: APP_TITLE });
     await putAck;
 
-    // 数据模式：分片发送，每片等 ack
     for (let off = 0; off < bytes.length; off += CHUNK) {
       const chunk = bytes.slice(off, off + CHUNK);
       const ack = waitFor(o => o.t === 'ack');
@@ -166,12 +227,11 @@ async function doPush() {
 
     const done = waitFor(o => o.t === 'done', 60000);
     await done;
-    log('✅ 上传完成！设备端已更新「English」词表（' + count + ' 个词）。');
+    log('✅ 上传完成！设备端「English」已更新（' + count + ' 个词条）。');
 
-    // 收尾：主动 bye，让设备恢复广播
     await sendJson({ t: 'bye' });
     await server.disconnect();
-    log('已断开。孩子可在设备菜单里打开 English 开始背单词。');
+    log('已断开。孩子可在设备菜单打开 English 背单词。');
   } catch (e) {
     log('❌ ' + e.message);
   }
